@@ -100,6 +100,7 @@ services:
 
   lms:
     image: {{ DOCKER_IMAGE_OPENEDX }}
+    user: "1000:1000"
     environment:
       SERVICE_VARIANT: lms
       DJANGO_SETTINGS_MODULE: lms.envs.tutor.production
@@ -126,6 +127,7 @@ services:
 
   cms:
     image: {{ DOCKER_IMAGE_OPENEDX }}
+    user: "1000:1000"
     environment:
       SERVICE_VARIANT: cms
       DJANGO_SETTINGS_MODULE: cms.envs.tutor.production
