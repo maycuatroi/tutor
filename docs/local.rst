@@ -141,6 +141,56 @@ The default Open edX theme is rather bland, so Tutor makes it easy to switch to 
 
 Out of the box, only the default "open-edx" theme is available. We also developed `Indigo, a beautiful, customizable theme <https://github.com/overhangio/indigo>`__ which is easy to install with Tutor.
 
+Changing the mysql charset and collation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. note:: This command has been tested only for users upgrading from Quince. While it is expected to work for users on earlier releases, please use it with caution as it has not been tested with those versions.
+
+The database's charset and collation might not support specific characters or emojis. Tutor will function normally without this change unless specific characters are used in the instance.
+
+.. warning:: This change is potentially irreversible. It is recommended to make a backup of the MySQL database. See the :ref:`database dump instructions <database_dumps>` to create a DB dump.
+
+To change the charset and collation of all the tables in the openedx database, run::
+
+    tutor local do convert-mysql-utf8mb4-charset
+
+Alternatively, to change the charset and collation of certain tables or to exclude certain tables, the ``--include`` or ``--exclude`` options can be used. These options take comma separated names of tables/apps with no space in-between. To upgrade the ``courseware_studentmodule`` and ``courseware_studentmodulehistory`` tables, run::
+
+    tutor local do convert-mysql-utf8mb4-charset --include=courseware_studentmodule,courseware_studentmodulehistory
+
+Tutor performs pattern matching from the start of the table name so just the name of the app is enough to include/exclude all the tables under that app. To upgrade all the tables in the database except the ones under the student and wiki apps, run::
+
+    tutor local do convert-mysql-utf8mb4-charset --exclude=student,wiki
+
+In the above command, all the tables whose name starts with either student or wiki will be excluded from the upgrade process.
+
+By default, only the tables in the openedx database are changed. For upgrading tables in any additional databases used by plugins, the ``--database`` option can be used to upgrade them. To upgrade all the tables in the discovery database, run::
+
+    tutor local do convert-mysql-utf8mb4-charset --database=discovery
+
+.. _update_mysql_authentication_plugin:
+
+Updating the authentication plugin of MySQL users
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+As of MySQL v8.4.0, the ``mysql_native_password`` authentication plugin has been deprecated. Users created with this authentication plugin should ideally be updated to use the latest ``caching_sha2_password`` authentication plugin.
+
+Tutor makes it easy do so with this handy command::
+
+    tutor local do update-mysql-authentication-plugin USERNAME
+
+The password will not be required for official plugins that have database users as tutor can infer it from the config. If the password cannot be found by tutor, you will be prompted to enter the password interactively. Alternatively, the password can also be provided as an option::
+
+    tutor local do update-mysql-authentication-plugin USERNAME --password=PASSWORD
+
+.. warning:: Since we are generating a new password hash, whatever password is entered here will be considered as the new password for the user. Please make similar changes to any connection strings to avoid database connection issues.
+
+To update the database users for a vanilla tutor installation::
+
+    tutor local do update-mysql-authentication-plugin $(tutor config printvalue OPENEDX_MYSQL_USERNAME)
+    tutor local do update-mysql-authentication-plugin $(tutor config printvalue MYSQL_ROOT_USERNAME)
+
+
 Running arbitrary ``manage.py`` commands
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

@@ -2,6 +2,7 @@
 List of all the action, filter and context names used across Tutor. This module is used
 to generate part of the reference documentation.
 """
+
 from __future__ import annotations
 
 # The Tutor plugin system is licensed under the terms of the Apache 2.0 license.
@@ -197,9 +198,9 @@ class Filters:
     #:   added as subcommands to the ``local/dev/k8s do`` commands. They must return a list of
     #:   ("service name", "service command") tuples. Each "service command" will be executed
     #:   in the "service" container, both in local, dev and k8s mode.
-    CLI_DO_COMMANDS: Filter[
-        list[Callable[[Any], Iterable[tuple[str, str]]]], []
-    ] = Filter()
+    CLI_DO_COMMANDS: Filter[list[Callable[[Any], Iterable[tuple[str, str]]]], []] = (
+        Filter()
+    )
 
     #: List of initialization tasks (scripts) to be run in the ``init`` job. This job
     #: includes all database migrations, setting up, etc. To run some tasks before or
@@ -256,6 +257,17 @@ class Filters:
     #: :parameter list[tuple[str, ...]] items: list of (name, value) new settings. All
     #:   names must be prefixed with the plugin name in all-caps.
     CONFIG_UNIQUE: Filter[list[tuple[str, Any]], []] = Filter()
+
+    #: Used to declare unique key:value pairs in the ``config.yml`` file that will be overwritten on ``tutor config save``.
+    #: This is where you should declare passwords and other secrets that need to be fetched live from an external secrets
+    #: store. Most users will not need to use this filter but it will allow you to programmatically fetch and set secrets
+    #: from an external secrets store such as AWS Secrets Manager via boto3.
+    #:
+    #: Values passed in to this filter will overwrite existing values in the ``config.yml`` file.
+    #:
+    #: :parameter list[tuple[str, ...]] items: list of (name, value) new settings. All
+    #:   names must be prefixed with the plugin name in all-caps.
+    CONFIG_USER: Filter[list[tuple[str, Any]], []] = Filter()
 
     #: Use this filter to modify the ``docker build`` command.
     #:
@@ -339,7 +351,9 @@ class Filters:
     #:
     #: - ``HOST_USER_ID``: the numerical ID of the user on the host.
     #: - ``TUTOR_APP``: the app name ("tutor" by default), used to determine the dev/local project names.
-    #: - ``TUTOR_VERSION``: the current version of Tutor.
+    #: - ``TUTOR_VERSION``: the current version of Tutor, as a string in the form MAJOR.MINOR.PATCH.
+    #: - ``TUTOR_VERSION_MAJOR``: the MAJOR part of TUTOR_VESRION, as an integer.
+    #: - ``TUTOR_VERSION_MINOR``: the MINOR part of TUTOR_VERSION, as an integer.
     #: - ``iter_values_named``: a function to iterate on variables that start or end with a given string.
     #: - ``iter_mounts``: a function that yields compose-compatible bind-mounts for any given service.
     #: - ``iter_mounted_directories``: iterate on bind-mounted directory names.
@@ -429,7 +443,7 @@ class Filters:
     #: Python-based Docker image as well. The Dockerfile must declare mounted layers::
     #:
     #:     {% for name in iter_mounted_directories(MOUNTS, "yourimage") %}
-    #:     FROM scratch as mnt-{{ name }}
+    #:     FROM scratch AS mnt-{{ name }}
     #:     {% endfor %}
     #:
     #: Then, Python packages are installed with::
@@ -492,6 +506,25 @@ class Filters:
     #: :param list[str] plugins: plugin developers probably don't have to modify this
     #:   filter themselves, but they can apply it to check whether other plugins are enabled.
     PLUGINS_LOADED: Filter[list[str], []] = Filter()
+
+    #: Use this filter to determine whether a file should be rendered. This can be useful in scenarios where
+    #: certain types of files need special handling, such as binary files, which should not be rendered as text.
+    #:
+    #: This filter expects a boolean return value that indicates whether the file should be rendered.
+    #:
+    #: :param bool should_render: Initial decision on rendering the file, typically set to True.
+    #: :param str file_path: The path to the file being checked.
+    IS_FILE_RENDERED: Filter[bool, [str]] = Filter()
+
+    #: List of parameters to use when starting the LMS Celery worker ``celery worker ...``.
+    #:
+    #: :param list[str] command: the list of paramaters to use as the celery command.
+    LMS_WORKER_COMMAND: Filter[list[str], []] = Filter()
+
+    #: List of parameters to use when starting the CMS Celery worker ``celery worker ...``.
+    #:
+    #: :param list[str] command: the list of paramaters to use as the celery command.
+    CMS_WORKER_COMMAND: Filter[list[str], []] = Filter()
 
 
 class Contexts:

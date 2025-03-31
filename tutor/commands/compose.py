@@ -73,6 +73,7 @@ class ComposeTaskRunner(BaseComposeTaskRunner):
 
 class BaseComposeContext(BaseTaskContext):
     NAME: t.Literal["local", "dev"]
+    OPENEDX_SERVICES: list[str] = ["lms", "cms"]
 
     def job_runner(self, config: Config) -> ComposeTaskRunner:
         raise NotImplementedError
@@ -172,27 +173,32 @@ Are you sure you want to continue?"""
         if interactive:
             question = f"""Your platform is being upgraded from {run_upgrade_from_release.capitalize()}.
 
-    If you run custom Docker images, you must rebuild them now by running the following command in a different shell:
+If you run custom Docker images, you must rebuild them now by running the following command in a different shell:
 
-        tutor images build all # list your custom images here
+    tutor images build all # list your custom images here
 
-    See the documentation for more information:
+See the documentation for more information:
 
-        https://docs.tutor.edly.io/install.html#upgrading-to-a-new-open-edx-release
+    https://docs.tutor.edly.io/install.html#upgrading-to-a-new-open-edx-release
 
-    Press enter when you are ready to continue"""
+Press enter when you are ready to continue"""
             click.confirm(
                 fmt.question(question), default=True, abort=True, prompt_suffix=" "
             )
 
 
 def interactive_configuration(
-    context: click.Context, interactive: bool, run_for_prod: t.Optional[bool] = None
+    context: click.Context,
+    interactive: bool,
+    run_for_prod: t.Optional[bool] = None,
 ) -> None:
-    click.echo(fmt.title("Interactive platform configuration"))
     config = tutor_config.load_minimal(context.obj.root)
     if interactive:
-        interactive_config.ask_questions(config, run_for_prod=run_for_prod)
+        click.echo(fmt.title("Interactive platform configuration"))
+        interactive_config.ask_questions(
+            config,
+            run_for_prod=run_for_prod,
+        )
     tutor_config.save_config_file(context.obj.root, config)
     config = tutor_config.load_full(context.obj.root)
     tutor_env.save(context.obj.root, config)
@@ -239,14 +245,25 @@ def start(
     services: list[str],
 ) -> None:
     command = ["up", "--remove-orphans"]
+    attach = len(services) == 1 and not detach
     if build:
         command.append("--build")
-    if detach:
+    # We have to run the container in detached mode first to attach to it
+    if detach or attach:
         command.append("-d")
+    else:
+        fmt.echo_info("ℹ️  To exit logs without stopping the containers, use ctrl+z")
 
     # Start services
     config = tutor_config.load(context.root)
     context.job_runner(config).docker_compose(*command, *services)
+
+    if attach:
+        fmt.echo_info(
+            f"""Attaching to service {services[0]}
+ℹ️  To detach without stopping the service, use ctrl+p followed by ctrl+q"""
+        )
+        context.job_runner(config).docker_compose("attach", *services)
 
 
 @click.command(help="Stop a running platform")
@@ -286,7 +303,7 @@ def restart(context: BaseComposeContext, services: list[str]) -> None:
     else:
         for service in services:
             if service == "openedx":
-                command += ["lms", "lms-worker", "cms", "cms-worker"]
+                command += context.OPENEDX_SERVICES
             else:
                 command.append(service)
     context.job_runner(config).docker_compose(*command)

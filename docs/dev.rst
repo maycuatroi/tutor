@@ -12,7 +12,7 @@ For detailed explanations on how to work on edx-platform and its dependencies, s
 First-time setup
 ----------------
 
-Firstly, either :ref:`install Tutor <install>` (for development against the named releases of Open edX) or :ref:`install Tutor Nightly <nightly>` (for development against Open edX's master branches).
+Firstly, either :ref:`install Tutor <install>` (for development against the named releases of Open edX) or :ref:`install Tutor Main <main>` (for development against Open edX's master branches).
 
 Then, optionally, tell Tutor to use a local fork of edx-platform::
 
@@ -28,7 +28,7 @@ This will perform several tasks. It will:
 * build the "openedx-dev" Docker image, which is based on the "openedx" production image but is `specialized for developer usage`_ (eventually with your fork),
 * stop any existing locally-running Tutor containers,
 * disable HTTPS,
-* set ``LMS_HOST`` to `local.edly.io <http://local.edly.io>`_ (a convenience domain that simply `points at 127.0.0.1 <https://dnschecker.org/#A/local.edly.io>`_),
+* set ``LMS_HOST`` to `local.openedx.io <http://local.openedx.io>`_ (a convenience domain that simply `points at 127.0.0.1 <https://dnschecker.org/#A/local.openedx.io>`_),
 * prompt for a platform details (with suitable defaults),
 * start LMS, CMS, supporting services, and any plugged-in services,
 * ensure databases are created and migrated, and
@@ -42,8 +42,8 @@ Additionally, when a local clone of edx-platform is bind-mounted, it will:
 
 Once setup is complete, the platform will be running in the background:
 
-* LMS will be accessible at `http://local.edly.io:8000 <http://local.edly.io:8000>`_.
-* CMS will be accessible at `http://studio.local.edly.io:8001 <http://studio.local.edly.io:8001>`_.
+* LMS will be accessible at `http://local.openedx.io:8000 <http://local.openedx.io:8000>`_.
+* CMS will be accessible at `http://studio.local.openedx.io:8001 <http://studio.local.openedx.io:8001>`_.
 * Plugged-in services should be accessible at their documented URLs.
 
 Now, use the ``tutor dev ...`` command-line interface to manage the development environment. Some common commands are described below.
@@ -99,9 +99,9 @@ To open a python shell in the LMS or CMS, run::
 
 You can then import edx-platform and django modules and execute python code.
 
-To rebuild assets, you can use the ``openedx-assets`` command that ships with Tutor::
+To rebuild assets, you can run the ``build-dev`` NPM script that comes with edx-platform::
 
-    tutor dev run lms openedx-assets build --env=dev
+    tutor dev run lms npm run build-dev
 
 
 .. _specialized for developer usage:
@@ -113,7 +113,7 @@ The ``openedx-dev`` Docker image is based on the same ``openedx`` image used by 
 
 - The user that runs inside the container has the same UID as the user on the host, to avoid permission problems inside mounted volumes (and in particular in the edx-platform repository).
 - Additional Python and system requirements are installed for convenient debugging: `ipython <https://ipython.org/>`__, `ipdb <https://pypi.org/project/ipdb/>`__, vim, telnet.
-- The edx-platform `development requirements <https://github.com/openedx/edx-platform/blob/open-release/quince.master/requirements/edx/development.in>`__ are installed.
+- The edx-platform `development requirements <https://github.com/openedx/edx-platform/blob/open-release/sumac.master/requirements/edx/development.in>`__ are installed.
 
 
 If you are using a custom ``openedx`` image, then you will need to rebuild ``openedx-dev`` every time you modify ``openedx``. To so, run::
@@ -238,7 +238,6 @@ Adding items to the ``MOUNTS`` setting effectively adds new bind-mount volumes t
 
 You are then free to bind-mount any directory to any container. For instance, to mount your own edx-platform fork::
 
-    version: "3.7"
     services:
       lms:
         volumes:

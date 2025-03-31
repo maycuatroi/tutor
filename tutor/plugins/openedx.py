@@ -1,18 +1,52 @@
 from __future__ import annotations
 
+
 import os
 import re
 import typing as t
 
-from tutor import bindmount, hooks
+from tutor import bindmount, fmt, hooks
 from tutor.__about__ import __version_suffix__
+from tutor.plugins.base import PLUGINS_ROOT
+
+
+@hooks.Actions.PROJECT_ROOT_READY.add(priority=hooks.priorities.HIGH)
+def _migrate_obsolete_nightly_root(root: str) -> None:
+    """
+    Since Tutor switched from the "nightly" branch to the "main" branch, we
+    automatically migrate data from the project root and the plugins root.
+
+    REMOVE-AFTER-V20: migrate this code to the sumac upgrade commands.
+    """
+
+    # Run it for old nightly only
+    if __version_suffix__ != "main":
+        return
+
+    # Migrate the project root
+    nightly_root = os.path.join(os.path.dirname(root), "tutor-nightly")
+    if os.path.exists(nightly_root) and not os.path.exists(root):
+        fmt.echo_alert(
+            f"Migrating legacy nightly root from {nightly_root} to {root}..."
+        )
+        os.rename(nightly_root, root)
+
+    # Migrate the plugins root
+    nightly_plugins_root = os.path.join(
+        os.path.dirname(PLUGINS_ROOT), "tutor-nightly-plugins"
+    )
+    if os.path.exists(nightly_plugins_root) and not os.path.exists(PLUGINS_ROOT):
+        fmt.echo_alert(
+            f"Migrating legacy nightly plugins root from {nightly_plugins_root} to {PLUGINS_ROOT}..."
+        )
+        os.rename(nightly_plugins_root, PLUGINS_ROOT)
 
 
 @hooks.Filters.CONFIG_DEFAULTS.add()
-def _set_openedx_common_version_in_nightly(
-    items: list[tuple[str, t.Any]]
+def _set_openedx_common_version_in_main(
+    items: list[tuple[str, t.Any]],
 ) -> list[tuple[str, t.Any]]:
-    if __version_suffix__ == "nightly":
+    if __version_suffix__ == "main":
         items.append(("OPENEDX_COMMON_VERSION", "master"))
     return items
 
@@ -25,6 +59,17 @@ def _edx_platform_public_hosts(
         hosts += ["{{ LMS_HOST }}:8000", "{{ CMS_HOST }}:8001"]
     else:
         hosts += ["{{ LMS_HOST }}", "{{ CMS_HOST }}"]
+    return hosts
+
+
+@hooks.Filters.APP_PUBLIC_HOSTS.add()
+def _meilisearch_public_hosts(
+    hosts: list[str], context_name: t.Literal["local", "dev"]
+) -> list[str]:
+    if context_name == "dev":
+        hosts.append("{{ MEILISEARCH_PUBLIC_URL.split('://')[1] }}:7700")
+    else:
+        hosts.append("{{ MEILISEARCH_PUBLIC_URL.split('://')[1] }}")
     return hosts
 
 
@@ -65,6 +110,7 @@ hooks.Filters.MOUNTED_DIRECTORIES.add_items(
         ("openedx", "edx-enterprise"),
         ("openedx", "edx-ora2"),
         ("openedx", "edx-search"),
+        ("openedx", "openedx-learning"),
         ("openedx", r"platform-plugin-.*"),
     ]
 )
@@ -72,7 +118,7 @@ hooks.Filters.MOUNTED_DIRECTORIES.add_items(
 
 @hooks.Filters.MOUNTED_DIRECTORIES.add(priority=hooks.priorities.LOW)
 def _add_openedx_dev_mounted_python_packages(
-    image_regex: list[tuple[str, str]]
+    image_regex: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:
     """
     Automatically add python packages to "openedx-dev" if they are already in the
@@ -109,8 +155,6 @@ def _mount_edx_platform_python_requirements_compose(
     for image_name, regex in hooks.Filters.MOUNTED_DIRECTORIES.iterate():
         if re.match(regex, folder_name):
             # Bind-mount requirement
-            # TODO this is a breaking change because we associate runtime bind-mounts to
-            # "openedx" and no longer to "lms", "cms", etc.
             volumes.append((image_name, f"/mnt/{folder_name}"))
     return volumes
 
@@ -140,4 +184,52 @@ def is_directory_mounted(image_name: str, dirname: str) -> bool:
 
 hooks.Filters.ENV_TEMPLATE_VARIABLES.add_item(
     ("iter_mounted_directories", iter_mounted_directories)
+)
+
+
+hooks.Filters.LMS_WORKER_COMMAND.add_items(
+    [
+        "celery",
+        "--app=lms.celery",
+        "worker",
+        "--loglevel=info",
+        "--hostname=edx.lms.core.default.%h",
+        "--queues=edx.lms.core.default,edx.lms.core.high,edx.lms.core.high_mem",
+        "--max-tasks-per-child=100",
+        "--prefetch-multiplier=1",
+        "--without-gossip",
+        "--without-mingle",
+    ]
+)
+
+
+hooks.Filters.CMS_WORKER_COMMAND.add_items(
+    [
+        "celery",
+        "--app=cms.celery",
+        "worker",
+        "--loglevel=info",
+        "--hostname=edx.cms.core.default.%h",
+        "--queues=edx.cms.core.default,edx.cms.core.high,edx.cms.core.low",
+        "--max-tasks-per-child=100",
+        "--prefetch-multiplier=1",
+        "--without-gossip",
+        "--without-mingle",
+    ]
+)
+
+
+def iter_cms_celery_parameters() -> t.Iterator[str]:
+    yield from hooks.Filters.CMS_WORKER_COMMAND.iterate()
+
+
+def iter_lms_celery_parameters() -> t.Iterator[str]:
+    yield from hooks.Filters.LMS_WORKER_COMMAND.iterate()
+
+
+hooks.Filters.ENV_TEMPLATE_VARIABLES.add_items(
+    [
+        ("iter_cms_celery_parameters", iter_cms_celery_parameters),
+        ("iter_lms_celery_parameters", iter_lms_celery_parameters),
+    ]
 )

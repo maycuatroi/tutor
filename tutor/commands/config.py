@@ -1,18 +1,21 @@
 from __future__ import annotations
 
 import json
+import os.path
 import typing as t
 
 import click
 import click.shell_completion
 
+from shutil import which
+
 from tutor import config as tutor_config
-from tutor import env, exceptions, fmt
+from tutor import env, exceptions, fmt, hooks
 from tutor import interactive as interactive_config
-from tutor import serialize
+from tutor import serialize, utils
 from tutor.commands.context import Context
 from tutor.commands.params import ConfigLoaderParam
-from tutor.types import ConfigValue
+from tutor.types import Config, ConfigValue
 
 
 @click.group(
@@ -136,6 +139,13 @@ class ConfigListKeyValParamType(ConfigKeyValParamType):
 @click.option(
     "-e", "--env-only", "env_only", is_flag=True, help="Skip updating config.yml"
 )
+@click.option(
+    "-c",
+    "--clean",
+    "clean_env",
+    is_flag=True,
+    help="Remove everything in the env directory before save",
+)
 @click.pass_obj
 def save(
     context: Context,
@@ -145,10 +155,27 @@ def save(
     remove_vars: list[tuple[str, t.Any]],
     unset_vars: list[str],
     env_only: bool,
+    clean_env: bool,
 ) -> None:
     config = tutor_config.load_minimal(context.root)
+
+    # Add question to interactive prompt, such that the environment is automatically
+    # deleted if necessary in interactive mode.
+    @hooks.Actions.CONFIG_INTERACTIVE.add()
+    def _prompt_for_env_deletion(_config: Config) -> None:
+        if clean_env:
+            run_clean = click.confirm(
+                fmt.question("Remove existing Tutor environment directory?"),
+                prompt_suffix=" ",
+                default=True,
+            )
+            if run_clean:
+                env.delete_env_dir(context.root)
+
     if interactive:
         interactive_config.ask_questions(config)
+    elif clean_env:
+        env.delete_env_dir(context.root)
     if set_vars:
         for key, value in set_vars:
             config[key] = env.render_unknown(config, value)
@@ -220,8 +247,48 @@ def patches_list(context: Context) -> None:
     renderer.print_patches_locations()
 
 
+@click.command(name="show", help="Print the rendered contents of a template patch")
+@click.argument("name")
+@click.pass_obj
+def patches_show(context: Context, name: str) -> None:
+    config = tutor_config.load_full(context.root)
+    renderer = env.Renderer(config)
+    rendered = renderer.patch(name)
+    if rendered:
+        print(rendered)
+
+
+@click.command(name="edit", help="Edit config.yml of the current environment")
+@click.pass_obj
+def edit(context: Context) -> None:
+    config_file = tutor_config.config_path(context.root)
+
+    if not os.path.isfile(config_file):
+        raise exceptions.TutorError(
+            f"Missing config file at {config_file}. Have you run 'tutor local launch' yet?"
+        )
+
+    open_cmd = []
+    if which("open"):  # MacOS & linux distributions that ship `open`. eg., Ubuntu
+        open_cmd = ["open", config_file]
+    elif which("xdg-open"):  # Linux
+        open_cmd = ["xdg-open", config_file]
+    elif which("start"):  # Windows
+        # Calling "start" on a regular file opens it with the default editor.
+        # The second argument "" just means "don't give the window a custom title".
+        open_cmd = ["start", '""', config_file]
+    else:
+        raise exceptions.TutorError(
+            f"Failed to find utility to launch an editor. Edit {config_file} with the editor of your choice."
+        )
+
+    utils.execute(*open_cmd)
+
+
 config_command.add_command(save)
 config_command.add_command(printroot)
 config_command.add_command(printvalue)
 patches_command.add_command(patches_list)
+patches_command.add_command(patches_show)
 config_command.add_command(patches_command)
+config_command.add_command(edit)

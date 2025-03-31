@@ -1,6 +1,7 @@
 """
 Common jobs that must be added both to local, dev and k8s commands.
 """
+
 from __future__ import annotations
 
 import functools
@@ -12,6 +13,12 @@ from typing_extensions import ParamSpec
 
 from tutor import config as tutor_config
 from tutor import env, fmt, hooks
+from tutor.commands.context import Context
+from tutor.commands.jobs_utils import (
+    create_user_template,
+    get_mysql_change_charset_query,
+    set_theme_template,
+)
 from tutor.hooks import priorities
 
 
@@ -40,6 +47,10 @@ def _add_core_init_tasks() -> None:
     with hooks.Contexts.app("mysql").enter():
         hooks.Filters.CLI_DO_INIT_TASKS.add_item(
             ("mysql", env.read_core_template_file("jobs", "init", "mysql.sh"))
+        )
+    with hooks.Contexts.app("meilisearch").enter():
+        hooks.Filters.CLI_DO_INIT_TASKS.add_item(
+            ("lms", env.read_core_template_file("jobs", "init", "meilisearch.sh"))
         )
     with hooks.Contexts.app("lms").enter():
         hooks.Filters.CLI_DO_INIT_TASKS.add_item(
@@ -102,24 +113,6 @@ def createuser(
     yield ("lms", create_user_template(superuser, staff, name, email, password))
 
 
-def create_user_template(
-    superuser: str, staff: bool, username: str, email: str, password: str
-) -> str:
-    opts = ""
-    if superuser:
-        opts += " --superuser"
-    if staff:
-        opts += " --staff"
-    return f"""
-./manage.py lms manage_user {opts} {username} {email}
-./manage.py lms shell -c "
-from django.contrib.auth import get_user_model
-u = get_user_model().objects.get(username='{username}')
-u.set_password('{password}')
-u.save()"
-"""
-
-
 @click.command(help="Import the demo course")
 @click.option(
     "-r",
@@ -173,7 +166,11 @@ echo "INFO: Will import course data at: $course_root" && echo
 python ./manage.py cms import ../data "$course_root"
 
 # Re-index courses
-./manage.py cms reindex_course --all --setup"""
+# We are not doing this anymore, because it doesn't make much sense to reindex *all*
+# courses after a single one has been created. Thus we should # rely on course authors to
+# press the "reindex" button in the studio after the course has # been imported.
+#./manage.py cms reindex_course --all --setup
+"""
     yield ("cms", template)
 
 
@@ -262,43 +259,6 @@ def settheme(domains: list[str], theme_name: str) -> t.Iterable[tuple[str, str]]
     yield ("lms", set_theme_template(theme_name, domains))
 
 
-def set_theme_template(theme_name: str, domain_names: list[str]) -> str:
-    """
-    For each domain, get or create a Site object and assign the selected theme.
-    """
-    # Note that there are no double quotes " in this piece of code
-    python_command = """
-import sys
-from django.contrib.sites.models import Site
-def assign_theme(name, domain):
-    print('Assigning theme', name, 'to', domain)
-    if len(domain) > 50:
-            sys.stderr.write(
-                'Assigning a theme to a site with a long (> 50 characters) domain name.'
-                ' The displayed site name will be truncated to 50 characters.\\n'
-            )
-    site, _ = Site.objects.get_or_create(domain=domain)
-    if not site.name:
-        name_max_length = Site._meta.get_field('name').max_length
-        site.name = domain[:name_max_length]
-        site.save()
-    site.themes.all().delete()
-    if name != 'default':
-        site.themes.create(theme_dir_name=name)
-"""
-    domain_names = domain_names or [
-        "{{ LMS_HOST }}",
-        "{{ LMS_HOST }}:8000",
-        "{{ CMS_HOST }}",
-        "{{ CMS_HOST }}:8001",
-        "{{ PREVIEW_LMS_HOST }}",
-        "{{ PREVIEW_LMS_HOST }}:8000",
-    ]
-    for domain_name in domain_names:
-        python_command += f"assign_theme('{theme_name}', '{domain_name}')\n"
-    return f'./manage.py lms shell -c "{python_command}"'
-
-
 @click.command(context_settings={"ignore_unknown_options": True})
 @click.argument("args", nargs=-1)
 def sqlshell(args: list[str]) -> t.Iterable[tuple[str, str]]:
@@ -308,10 +268,203 @@ def sqlshell(args: list[str]) -> t.Iterable[tuple[str, str]]:
     Extra arguments will be passed to the `mysql` command verbatim. For instance, to
     show tables from the "openedx" database, run `do sqlshell openedx -e 'show tables'`.
     """
-    command = "mysql --user={{ MYSQL_ROOT_USERNAME }} --password={{ MYSQL_ROOT_PASSWORD }} --host={{ MYSQL_HOST }} --port={{ MYSQL_PORT }} --default-character-set=utf8mb3"
+    command = "mysql --user={{ MYSQL_ROOT_USERNAME }} --password={{ MYSQL_ROOT_PASSWORD }} --host={{ MYSQL_HOST }} --port={{ MYSQL_PORT }} --default-character-set=utf8mb4"
     if args:
         command += " " + shlex.join(args)  # pylint: disable=protected-access
     yield ("lms", command)
+
+
+@click.command(
+    short_help="Convert the charset and collation of mysql to utf8mb4.",
+    help=(
+        "Convert the charset and collation of mysql to utf8mb4. You can either upgrade all tables, specify only certain tables to upgrade or specify certain tables to exclude from the upgrade process"
+    ),
+    context_settings={"ignore_unknown_options": True},
+)
+@click.option(
+    "--include",
+    is_flag=False,
+    nargs=1,
+    help="Apps/Tables to include in the upgrade process. Requires comma-seperated values with no space in-between.",
+)
+@click.option(
+    "--exclude",
+    is_flag=False,
+    nargs=1,
+    help="Apps/Tables to exclude from the upgrade process. Requires comma-seperated values with no space in-between.",
+)
+@click.option(
+    "--database",
+    is_flag=False,
+    nargs=1,
+    default="{{ OPENEDX_MYSQL_DATABASE }}",
+    show_default=True,
+    required=True,
+    type=str,
+    help="The database of which the tables are to be upgraded",
+)
+@click.option("-I", "--non-interactive", is_flag=True, help="Run non-interactively")
+@click.pass_obj
+def convert_mysql_utf8mb4_charset(
+    context: Context,
+    include: str,
+    exclude: str,
+    database: str,
+    non_interactive: bool,
+) -> t.Iterable[tuple[str, str]]:
+    """
+    Do command to upgrade the charset and collation of tables in MySQL
+
+    Can specify whether to upgrade all tables, or include certain tables/apps or to exclude certain tables/apps
+    """
+
+    config = tutor_config.load(context.root)
+
+    if not config["RUN_MYSQL"]:
+        fmt.echo_info(
+            "You are not running MySQL (RUN_MYSQL=false). It is your "
+            "responsibility to upgrade the charset and collation of your MySQL instance."
+        )
+        return
+
+    # Prompt user for confirmation of upgrading all tables
+    if not include and not exclude and not non_interactive:
+        upgrade_all_tables = click.confirm(
+            "Are you sure you want to upgrade all tables? This process is potentially irreversible and may take a long time.",
+            prompt_suffix=" ",
+        )
+        if not upgrade_all_tables:
+            return
+
+    charset_to_upgrade_from = "utf8mb3"
+    charset = "utf8mb4"
+    collation = "utf8mb4_unicode_ci"
+
+    query_to_append = ""
+    if include or exclude:
+
+        def generate_query_to_append(tables: list[str], exclude: bool = False) -> str:
+            include = "NOT" if exclude else ""
+            table_names = f"^{tables[0]}"
+            for i in range(1, len(tables)):
+                table_names += f"|^{tables[i]}"
+            # We use regexp for pattern matching the names from the start of the tablename
+            query_to_append = f"AND table_name {include} regexp '{table_names}' "
+            return query_to_append
+
+        query_to_append += (
+            generate_query_to_append(include.split(",")) if include else ""
+        )
+        query_to_append += (
+            generate_query_to_append(exclude.split(","), exclude=True)
+            if exclude
+            else ""
+        )
+    click.echo(
+        fmt.title(
+            f"Updating charset and collation of tables in the {database} database to {charset} and {collation} respectively."
+        )
+    )
+    query = get_mysql_change_charset_query(
+        database, charset, collation, query_to_append, charset_to_upgrade_from
+    )
+
+    mysql_command = (
+        "mysql --user={{ MYSQL_ROOT_USERNAME }} --password={{ MYSQL_ROOT_PASSWORD }} --host={{ MYSQL_HOST }} --port={{ MYSQL_PORT }} --skip-column-names --silent "
+        + shlex.join([f"--database={database}", "-e", query])
+    )
+    yield ("lms", mysql_command)
+    fmt.echo_info("MySQL charset and collation successfully upgraded")
+
+
+@click.command(
+    short_help="Update the authentication plugin of a mysql user to caching_sha2_password.",
+    help=(
+        "Update the authentication plugin of a mysql user to caching_sha2_password from mysql_native_password."
+    ),
+)
+@click.option(
+    "-p",
+    "--password",
+    help="Specify password from the command line. Updates the password for the user if a password that is different from the current one is specified.",
+)
+@click.argument(
+    "user",
+)
+@click.pass_obj
+def update_mysql_authentication_plugin(
+    context: Context, user: str, password: str
+) -> t.Iterable[tuple[str, str]]:
+    """
+    Update the authentication plugin of MySQL users from mysql_native_password to caching_sha2_password
+    Handy command utilized when upgrading to v8.4 of MySQL which deprecates mysql_native_password
+    """
+
+    config = tutor_config.load(context.root)
+
+    if not config["RUN_MYSQL"]:
+        fmt.echo_info(
+            "You are not running MySQL (RUN_MYSQL=False). It is your "
+            "responsibility to update the authentication plugin of mysql users."
+        )
+        return
+
+    # Official plugins that have their own mysql user
+    known_mysql_users = [
+        # Plugin users
+        "credentials",
+        "discovery",
+        "jupyter",
+        "notes",
+        "xqueue",
+        # Core user
+        "openedx",
+    ]
+
+    # Create a list of the usernames and password config variables/keys
+    known_mysql_credentials_keys = [
+        (f"{plugin.upper()}_MYSQL_USERNAME", f"{plugin.upper()}_MYSQL_PASSWORD")
+        for plugin in known_mysql_users
+    ]
+    # Add the root user as it is the only one that is different from the rest
+    known_mysql_credentials_keys.append(("MYSQL_ROOT_USERNAME", "MYSQL_ROOT_PASSWORD"))
+
+    known_mysql_credentials = {}
+    # Build the dictionary of known credentials from config
+    for k, v in known_mysql_credentials_keys:
+        if username := config.get(k):
+            known_mysql_credentials[username] = config[v]
+
+    if not password:
+        password = known_mysql_credentials.get(user)  # type: ignore
+
+    # Prompt the user if password was not found in config
+    if not password:
+        password = click.prompt(
+            f"Please enter the password for the user {user}. Note that entering a different password here than the current one will update the password for user {user}.",
+            type=str,
+        )
+
+    host = "%"
+
+    query = f"ALTER USER IF EXISTS '{user}'@'{host}' IDENTIFIED with caching_sha2_password BY '{password}';"
+
+    yield (
+        "lms",
+        shlex.join(
+            [
+                "mysql",
+                "--user={{ MYSQL_ROOT_USERNAME }}",
+                "--password={{ MYSQL_ROOT_PASSWORD }}",
+                "--host={{ MYSQL_HOST }}",
+                "--port={{ MYSQL_PORT }}",
+                "--database={{ OPENEDX_MYSQL_DATABASE }}",
+                "--show-warnings",
+                "-e",
+                query,
+            ]
+        ),
+    )
 
 
 def add_job_commands(do_command_group: click.Group) -> None:
@@ -389,6 +542,7 @@ def do_callback(service_commands: t.Iterable[tuple[str, str]]) -> None:
 
 hooks.Filters.CLI_DO_COMMANDS.add_items(
     [
+        convert_mysql_utf8mb4_charset,
         createuser,
         importdemocourse,
         importdemolibraries,
@@ -396,5 +550,6 @@ hooks.Filters.CLI_DO_COMMANDS.add_items(
         print_edx_platform_setting,
         settheme,
         sqlshell,
+        update_mysql_authentication_plugin,
     ]
 )

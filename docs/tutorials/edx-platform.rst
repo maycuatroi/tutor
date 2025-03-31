@@ -16,7 +16,7 @@ Working on the "edx-platform" repository
 
 Download the code from the upstream repository::
 
-    cd /my/workspace/edx-plaform
+    cd /my/workspace/edx-platform
     git clone https://github.com/openedx/edx-platform .
 
 Check out the right version of the upstream repository. If you are working on the `current "zebulon" release <https://docs.openedx.org/en/latest/community/release_notes/index.html>`__ of Open edX, then you should checkout the corresponding branch::
@@ -25,13 +25,13 @@ Check out the right version of the upstream repository. If you are working on th
     # I.e: aspen, birch, cypress, etc.
     git checkout open-release/zebulon.master
 
-On the other hand, if you are working on the Tutor :ref:`"nightly" <nightly>` branch then you should checkout the master branch::
+On the other hand, if you are using :ref:`Tutor Main <main>`, then you should checkout the master branch::
 
     git checkout master
 
 Then, mount the edx-platform repository with Tutor::
 
-    tutor mounts add /my/workspace/edx-plaform
+    tutor mounts add /my/workspace/edx-platform
 
 This command does a few "magical" things 🧙 behind the scenes:
 
@@ -69,7 +69,7 @@ Quite often, developers don't want to work on edx-platform directly, but on a de
     cd /my/workspace/edx-ora2
     git clone https://github.com/openedx/edx-ora2 .
 
-Then, check out the right version of the package. This is the version that is indicated in the `edx-platform/requirements/edx/base.txt <https://github.com/openedx/edx-platform/blob/open-release/quince.master/requirements/edx/base.txt>`__. Be careful that the version that is currently in use in your version of edx-platform is **not necessarily the head of the master branch**::
+Then, check out the right version of the package. This is the version that is indicated in the `edx-platform/requirements/edx/base.txt <https://github.com/openedx/edx-platform/blob/open-release/sumac.master/requirements/edx/base.txt>`__. Be careful that the version that is currently in use in your version of edx-platform is **not necessarily the head of the master branch**::
 
     git checkout <my-version-tag-or-branch>
 
@@ -100,16 +100,30 @@ Verify that your repository is properly bind-mounted by running ``tutor mounts l
     - service: cms-job
         container_path: /mnt/edx-ora2
 
+(If the ``_mounts`` entries are empty, it didn't work automatically - see below.)
+
 You should then re-build the "openedx" Docker image to pick up your changes::
 
     tutor images build openedx-dev
 
-Then, whenever you run ``tutor dev start``, the "lms" and "cms" container should automatically hot-reload your changes.
+Then, whenever you run ``tutor dev start``, the "lms" and "cms" containers should automatically hot-reload your changes.
 
 To push your changes in production, you should do the same with ``tutor local`` and the "openedx" image::
 
     tutor images build openedx
     tutor local start -d
+
+What if my edx-platform package is not automatically bind-mounted?
+------------------------------------------------------------------
+
+It is quite possible that your package is not automatically recognized and bind-mounted by Tutor. Out of the box, Tutor defines a set of regular expressions: if your package name matches this regular expression, it will be automatically bind-mounted. But if it does not, you have to tell Tutor about it.
+
+To do so, you will need to create a :ref:`Tutor plugin <plugin_development_tutorial>` that implements the :py:data:`tutor.hooks.Filters.MOUNTED_DIRECTORIES` filter::
+
+    from tutor import hooks
+    hooks.Filters.MOUNTED_DIRECTORIES.add_item(("openedx", "my-package"))
+
+After you implement and enable that plugin, ``tutor mounts list`` should display your directory among the bind-mounted directories.
 
 Debugging with breakpoints
 --------------------------
@@ -125,6 +139,8 @@ To debug a local edx-platform repository, first, start development in detached m
   # Or, debugging CMS:
   tutor dev start cms
 
+To detach from the service without shutting it down, use ``Ctrl+p`` followed with ``Ctrl+q``.
+
 Running edx-platform unit tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -137,7 +153,6 @@ Then, run unit tests with ``pytest`` commands::
     # Run tests on common apps
     unset DJANGO_SETTINGS_MODULE
     unset SERVICE_VARIANT
-    export EDXAPP_TEST_MONGO_HOST=mongodb
     pytest common
     pytest openedx
     pytest xmodule
@@ -152,18 +167,6 @@ Then, run unit tests with ``pytest`` commands::
 
 .. note::
     Getting all edx-platform unit tests to pass on Tutor is currently a work-in-progress. Some unit tests are still failing. If you manage to fix some of these, please report your findings in the `Open edX forum <https://discuss.openedx.org/tag/tutor>`__.
-
-What if my edx-platform package is not automatically bind-mounted?
-------------------------------------------------------------------
-
-It is quite possible that your package is not automatically recognized and bind-mounted by Tutor. Out of the box, Tutor defines a set of regular expressions: if your package name matches this regular expression, it will be automatically bind-mounted. But if it does not, you have to tell Tutor about it.
-
-To do so, you will need to create a :ref:`Tutor plugin <plugin_development_tutorial>` that implements the :py:data:`tutor.hooks.Filters.MOUNTED_DIRECTORIES` filter::
-
-    from tutor import hooks
-    hooks.Filters.MOUNTED_DIRECTORIES.add_item(("openedx", "my-package"))
-
-After you implement and enable that plugin, ``tutor mounts list`` should display your directory among the bind-mounted directories.
 
 Do I have to re-build the "openedx" Docker image after every change?
 --------------------------------------------------------------------

@@ -63,7 +63,7 @@ def _add_images_to_pull(
     """
     vendor_images = [
         ("caddy", "DOCKER_IMAGE_CADDY"),
-        ("elasticsearch", "DOCKER_IMAGE_ELASTICSEARCH"),
+        ("meilisearch", "DOCKER_IMAGE_MEILISEARCH"),
         ("mongodb", "DOCKER_IMAGE_MONGODB"),
         ("mysql", "DOCKER_IMAGE_MYSQL"),
         ("redis", "DOCKER_IMAGE_REDIS"),
@@ -227,7 +227,7 @@ def build(
                 image_build_args.append(f"--cache-from=type=registry,ref={tag}-cache")
             if cache_to_registry:
                 image_build_args.append(
-                    f"--cache-to=type=registry,mode=max,ref={tag}-cache"
+                    f"--cache-to=type=registry,mode=max,ref={tag}-cache,image-manifest=true"
                 )
 
             # Build contexts

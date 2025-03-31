@@ -111,6 +111,9 @@ def get_user(root: str) -> Config:
         config = get_yaml_file(path)
     upgrade_obsolete(config)
     update_with_env(config)
+
+    for name, value in hooks.Filters.CONFIG_USER.iterate():
+        config[name] = value
     return config
 
 
@@ -146,7 +149,7 @@ def get_defaults() -> Config:
 
 @hooks.Filters.CONFIG_DEFAULTS.add(priority=hooks.priorities.HIGH)
 def _load_config_defaults_yml(
-    items: list[tuple[str, t.Any]]
+    items: list[tuple[str, t.Any]],
 ) -> list[tuple[str, t.Any]]:
     defaults = get_template("defaults.yml")
     items += list(defaults.items())
@@ -232,7 +235,6 @@ def upgrade_obsolete(config: Config) -> None:
     for name in [
         "ACTIVATE_LMS",
         "ACTIVATE_CMS",
-        "ACTIVATE_ELASTICSEARCH",
         "ACTIVATE_MONGODB",
         "ACTIVATE_MYSQL",
         "ACTIVATE_REDIS",

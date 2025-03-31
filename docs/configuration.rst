@@ -40,7 +40,7 @@ With an up-to-date environment, Tutor is ready to launch an Open edX platform an
 Individual service activation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- ``RUN_ELASTICSEARCH`` (default: ``true``)
+- ``RUN_MEILISEARCH`` (default: ``true``)
 - ``RUN_MONGODB`` (default: ``true``)
 - ``RUN_MYSQL`` (default: ``true``)
 - ``RUN_REDIS`` (default: ``true``)
@@ -71,17 +71,17 @@ This configuration parameter defines the name of the Docker image to run the dev
 
 This configuration parameter defines which Caddy Docker image to use.
 
-- ``DOCKER_IMAGE_ELASTICSEARCH`` (default: ``"docker.io/elasticsearch:7.17.9"``)
+- ``DOCKER_IMAGE_MEILISEARCH`` (default: ``"docker.io/getmeili/meilisearch:v1.8.4"``)
 
-This configuration parameter defines which Elasticsearch Docker image to use.
+This configuration parameter defines which Meilisearch Docker image to use.
 
-- ``DOCKER_IMAGE_MONGODB`` (default: ``"docker.io/mongo:4.4.22"``)
+- ``DOCKER_IMAGE_MONGODB`` (default: ``"docker.io/mongo:7.0.7"``)
 
 This configuration parameter defines which MongoDB Docker image to use.
 
 .. https://hub.docker.com/_/mysql/tags?page=1&name=8.0
 
-- ``DOCKER_IMAGE_MYSQL`` (default: ``"docker.io/mysql:8.1.0"``)
+- ``DOCKER_IMAGE_MYSQL`` (default: ``"docker.io/mysql:8.4.0"``)
 
 This configuration parameter defines which MySQL Docker image to use.
 
@@ -117,10 +117,6 @@ You may want to pull/push images from/to a custom docker registry. For instance,
 Compose
 *******
 
-- ``DOCKER_COMPOSE_VERSION`` (default: ``"3.7"``)
-
-This configuration parameter sets the version of Docker Compose to be used to build all containers.
-
 - ``DEV_PROJECT_NAME`` (default: ``"{{ TUTOR_APP }}_dev"``)
 
 This configuration parameter sets the Development version of the Docker Compose project name.
@@ -136,7 +132,7 @@ Open edX customisation
 
 This defines the git repository from which you install Open edX platform code. If you run an Open edX fork with custom patches, set this to your own git repository. You may also override this configuration parameter at build time, by providing a ``--build-arg`` option.
 
-- ``OPENEDX_COMMON_VERSION`` (default: ``"open-release/quince.1"``, or ``master`` in :ref:`nightly <nightly>`)
+- ``OPENEDX_COMMON_VERSION`` (default: ``"open-release/sumac.2"``, or ``master`` in :ref:`Tutor Main <main>`)
 
 This defines the default version that will be pulled from all Open edX git repositories.
 
@@ -230,15 +226,21 @@ By default, a running Open edX platform deployed with Tutor includes all necessa
     MYSQL_ROOT_PASSWORD: <root user password>
 
 .. note::
-    When configuring an external MySQL database, please make sure it is using version 5.7.
+    When configuring an external MySQL database, please make sure it is using version 8.4.
 
-Elasticsearch
-*************
+Meilisearch
+***********
 
-- ``ELASTICSEARCH_SCHEME`` (default: ``"http"``)
-- ``ELASTICSEARCH_HOST`` (default: ``"elasticsearch"``)
-- ``ELASTICSEARCH_PORT`` (default: ``9200``)
-- ``ELASTICSEARCH_HEAP_SIZE`` (default: ``"1g"``)
+- ``MEILISEARCH_URL`` (default: ``"http://meilisearch:7700"``): internal URL used for backend-to-backend communication.
+- ``MEILISEARCH_PUBLIC_URL`` (default: ``"{% if ENABLE_HTTPS %}https{% else %}http{% endif %}://meilisearch.{{ LMS_HOST }}"``): external URL from which the frontend will access the Meilisearch instance.
+- ``MEILISEARCH_INDEX_PREFIX`` (default: ``"tutor_"``)
+- ``MEILISEARCH_MASTER_KEY`` (default: ``"{{ 24|random_string }}"``)
+- ``MEILISEARCH_API_KEY_UID`` (default: ``"{{ 4|uuid }}"``): UID used to sign the API key.
+- ``MEILISEARCH_API_KEY`` (default: ``"{{ MEILISEARCH_MASTER_KEY|uid_master_hash(MEILISEARCH_API_KEY_UID) }}"``)
+
+To reset the Meilisearch API key, make sure to unset both the API key and it's UID:
+
+    tutor config save --unset MEILISEARCH_API_KEY_UID MEILISEARCH_API_KEY
 
 MongoDB
 *******
@@ -382,74 +384,36 @@ Note that your edx-platform version must be a fork of the latest release **tag**
 
 If you don't create your fork from this tag, you *will* have important compatibility issues with other services. In particular:
 
-- Do not try to run a fork from an older (pre-Quince) version of edx-platform: this will simply not work.
+- Do not try to run a fork from an older (pre-Sumac) version of edx-platform: this will simply not work.
 - Do not try to run a fork from the edx-platform master branch: there is a 99% probability that it will fail.
-- Do not try to run a fork from the open-release/quince.master branch: Tutor will attempt to apply security and bug fix patches that might already be included in the open-release/quince.master but which were not yet applied to the latest release tag. Patch application will thus fail if you base your fork from the open-release/quince.master branch.
+- Do not try to run a fork from the open-release/sumac.master branch: Tutor will attempt to apply security and bug fix patches that might already be included in the open-release/sumac.master but which were not yet applied to the latest release tag. Patch application will thus fail if you base your fork from the open-release/sumac.master branch.
 
 .. _i18n:
 
-Adding custom translations
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+Getting and customizing Translations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you are not running Open edX in English (``LANGUAGE_CODE`` default: ``"en"``), chances are that some strings will not be properly translated. In most cases, this is because not enough contributors have helped translate Open edX into your language. It happens! With Tutor, available translated languages include those that come bundled with `edx-platform <https://github.com/openedx/edx-platform/tree/open-release/quince.master/conf/locale>`__ as well as those from `openedx-i18n <https://github.com/openedx/openedx-i18n/tree/master/edx-platform/locale>`__.
+Tutor builds images with the latest translations using the ``atlas pull`` `command <https://github.com/openedx/openedx-atlas>`_.
 
-Tutor offers a relatively simple mechanism to add custom translations to the openedx Docker image. You should create a folder that corresponds to your language code in the "build/openedx/locale" folder of the Tutor environment. This folder should contain a "LC_MESSAGES" folder. For instance::
+By default the translations are pulled from the `openedx-translations repository <https://github.com/openedx/openedx-translations>`_
+from the ``ATLAS_REVISION`` branch. You can use custom translations on your fork of the openedx-translations repository by setting the following configuration parameters:
 
-    mkdir -p "$(tutor config printroot)/env/build/openedx/locale/fr/LC_MESSAGES"
+- ``ATLAS_REVISION`` (default: ``"main"`` for Tutor Main, or ``"{{ OPENEDX_COMMON_VERSION }}"`` if a named release is used)
+- ``ATLAS_REPOSITORY`` (default: ``"openedx/openedx-translations"``). There's a feature request to `support GitLab and other providers <https://github.com/openedx/openedx-atlas/issues/20>`_.
+- ``ATLAS_OPTIONS`` (default: ``""``) Pass additional arguments to ``atlas pull``. Refer to the `atlas documentations <https://github.com/openedx/openedx-atlas>`_ for more information.
 
-The language code should be similar to those used in edx-platform or openedx-i18n (see links above).
+If you are not running Open edX in English (``LANGUAGE_CODE`` default: ``"en"``), chances are that some strings will not be properly translated. In most cases, this is because not enough contributors have helped translate Open edX into your language. It happens!
 
-Then, add a "django.po" file there that will contain your custom translations::
+With ``atlas``, it's possible to add custom translations by either `contributing to the Translations project in Transifex <https://docs.openedx.org/en/latest/translators/index.html>`_ or forking the `openedx-translations repository <https://github.com/openedx/openedx-translations>`_
+and making custom changes as explained in `the repository docs <https://github.com/openedx/openedx-translations#readme>`_.
 
-    msgid ""
-    msgstr ""
-    "Content-Type: text/plain; charset=UTF-8"
+Once you've applied your changes, you'll need to do the following:
 
-    msgid "String to translate"
-    msgstr "你翻译的东西 la traduction de votre bidule"
+#. Add the .po/.json translation files to the correct locations
 
+#. Run the command ``tutor images build mfe``
 
-.. warning::
-    Don't forget to specify the file ``Content-Type`` when adding message strings with non-ASCII characters; otherwise a ``UnicodeDecodeError`` will be raised during compilation.
-
-The "String to translate" part should match *exactly* the string that you would like to translate. You cannot make it up! The best way to find this string is to copy-paste it from the `upstream django.po file for the English language <https://github.com/openedx/edx-platform/blob/open-release/quince.master/conf/locale/en/LC_MESSAGES/django.po>`__.
-
-If you cannot find the string to translate in this file, then it means that you are trying to translate a string that is used in some piece of javascript code. Those strings are stored in a different file named "djangojs.po". You can check it out `in the edx-platform repo as well <https://github.com/openedx/edx-platform/blob/open-release/quince.master/conf/locale/en/LC_MESSAGES/djangojs.po>`__. Your custom javascript strings should also be stored in a "djangojs.po" file that should be placed in the same directory.
-
-To recap, here is an example. To translate a few strings in French, both from django.po and djangojs.po, we would have the following file hierarchy::
-
-    $(tutor config printroot)/env/build/openedx/locale/
-        fr/
-            LC_MESSAGES/
-                django.po
-                djangojs.po
-
-With django.po containing::
-
-    msgid ""
-    msgstr ""
-    "Content-Type: text/plain; charset=UTF-8"
-
-    msgid "It works! Powered by Open edX{registered_trademark}"
-    msgstr "Ça marche ! Propulsé by Open edX{registered_trademark}"
-
-And djangojs.po::
-
-    msgid ""
-    msgstr ""
-    "Content-Type: text/plain; charset=UTF-8"
-
-    msgid "%(num_points)s point possible (graded, results hidden)"
-    msgid_plural "%(num_points)s points possible (graded, results hidden)"
-    msgstr[0] "%(num_points)s point possible (noté, résultats cachés)"
-    msgstr[1] "%(num_points)s points possibles (notés, résultats cachés)"
-
-Then you will have to re-build the openedx Docker image::
-
-    tutor images build openedx
-
-Beware that this will take a long time! Unfortunately, it's difficult to accelerate this process, as translation files need to be compiled before collecting the assets. In development it's possible to accelerate the iteration loop -- but that exercise is left to the reader.
-
+#. Restart with ``tutor local restart``
 
 Running a different ``openedx`` Docker image
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -15,10 +15,13 @@ def ask_questions(config: Config, run_for_prod: Optional[bool] = None) -> None:
         config: Existing (or minimal) configuration. Modified in-place.
         run_for_prod: Whether platform should be configured for production.
             If None, then ask the user.
+    Returns:
+        None
     """
     defaults = tutor_config.get_defaults()
     if run_for_prod is None:
         run_for_prod = not config.get("LMS_HOST") in [
+            "local.openedx.io",
             "local.edly.io",
             "local.overhang.io",
         ]
@@ -32,8 +35,8 @@ def ask_questions(config: Config, run_for_prod: Optional[bool] = None) -> None:
         )
     if not run_for_prod:
         dev_values: Config = {
-            "LMS_HOST": "local.edly.io",
-            "CMS_HOST": "studio.local.edly.io",
+            "LMS_HOST": "local.openedx.io",
+            "CMS_HOST": "studio.local.openedx.io",
             "ENABLE_HTTPS": False,
         }
         fmt.echo_info(

@@ -98,9 +98,9 @@ When making a new Tutor release, increment the:
 - MAJOR version when making a backward-incompatible change (prefixed by "💥" in the changelog, as explained below).
 - MINOR version when making a backward-compatible change.
 
-An optional BRANCH suffix may be appended to the release name to indicate that extra changes were added on top of the latest release. For instance, "x.y.z-nightly" corresponds to release x.y.z on top of which extra changes were added to make it compatible with the Open edX master branches (see the :ref:`tutorial on running Tutor Nightly <nightly>`).
+An optional BRANCH suffix may be appended to the release name to indicate that extra changes were added on top of the latest release. For instance, "x.y.z-main" corresponds to release x.y.z on top of which extra changes were added to make it compatible with the Open edX master branches (see the :ref:`tutorial on running Tutor Main <main>`).
 
-`Officially-supported plugins <https://overhang.io/tutor/plugins>`__ follow the same versioning pattern. As a third-party plugin developer, you are encouraged to use the same pattern to make it immediately clear to your end-users which Open edX versions are supported.
+`Officially-supported plugins <https://edly.io/tutor/plugins-and-themes/>`__ follow the same versioning pattern. As a third-party plugin developer, you are encouraged to use the same pattern to make it immediately clear to your end-users which Open edX versions are supported.
 
 In Tutor and its officially-supported plugins, certain features, API endpoints, and older depenency versions are periodically deprecated. Generally, warnings are added to the Changelogs and/or the command-line interface one major release before support for any behavior is removed. In order to keep track of pending removals in the source code, comments containing the string ``REMOVE-AFTER-VXX`` should be used, where ``<XX>`` is the last major version that must support the behavior. For example::
 
@@ -117,10 +117,17 @@ Contributing to Tutor
 Contributions to Tutor and its plugins are highly encouraged. Please adhere to the following guidelines:
 
 - **General Discussion**: Before addressing anything other than clear-cut bugs, start a discussion on the `official Open edX forum <https://discuss.openedx.org>`__. This facilitates reaching a consensus on a high-level solution.
-- **Pull Requests**: For changes to Tutor core or plugin-specific modifications, open a pull request on the `Tutor repository <https://github.com/overhangio/tutor/pulls>`__ or the corresponding plugin repository.
+- **Pull Requests**: For changes to Tutor core or plugin-specific modifications, open a pull request on the `Tutor repository <https://github.com/overhangio/tutor/pulls>`__ or the corresponding plugin repository. Take care to target your pull request to the proper branch:
+
+  - Target ``release`` if your change is compatible with the latest official Open edX release and it carries no major backwards-incompatibility nor risk of regression. This ensures that the latest stable release of Tutor benefits from bug fixes and incremental improvements. Once merged, your change will automatically be forward-ported to ``main``.
+  - Target ``main`` if your change is only compatible with Open edX's master branches and/or your change would be disruptive to production Tutor site operators. If merged, your change will become part of the next pending release branch (described below) and then incorporated into ``release`` at the time of the next named Open edX release.
+  - At the beginning of each Open edX named release testing period, we split off from ``main`` a special pending release branch (e.g., ``redwood`` or ``sumac``). If your Tutor change is necessary for that pending release, merge it to said branch. At the end of the testing period, the pending branch will be merged into ``release`` and deleted. As with any set of changes merged to ``release``, they will then be forward-ported to ``main``.
+
 - **Running Tests and Code Formatting**:
+  
   - Ensure all tests pass by running ``make test``. This is mandatory for both Tutor core and plugin contributions.
   - If formatting tests fail, correct your code format using ``make format``.
+
 - **Changelog Entry**: Create a changelog entry for significant changes (excluding reformatting or documentation) by running ``make changelog-entry``. Edit the newly created file following the given formatting instructions. This applies to both Tutor core and plugin changes.
 - **Commit Messages**: Write clear Git commit titles and messages. Detail the rationale for your changes, the issue being addressed, and your solution. Include links to relevant forum discussions and describe your use case. Detailed explanations are valuable. For commit titles, follow `conventional commits <https://www.conventionalcommits.org>`__ guidelines.Additionally, if your pull request addresses an existing GitHub issue, include 'Close #XXX' in your commit message, where XXX is the issue number.
 

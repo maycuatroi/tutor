@@ -34,12 +34,14 @@ for store in MODULESTORE["default"]["OPTIONS"]["stores"]:
 # Behave like memcache when it comes to connection errors
 DJANGO_REDIS_IGNORE_EXCEPTIONS = True
 
-# Elasticsearch connection parameters
-ELASTIC_SEARCH_CONFIG = [{
-  {% if ELASTICSEARCH_SCHEME == "https" %}"use_ssl": True,{% endif %}
-  "host": "{{ ELASTICSEARCH_HOST }}",
-  "port": {{ ELASTICSEARCH_PORT }},
-}]
+# Meilisearch connection parameters
+MEILISEARCH_ENABLED = True
+MEILISEARCH_URL = "{{ MEILISEARCH_URL }}"
+MEILISEARCH_PUBLIC_URL = "{{ MEILISEARCH_PUBLIC_URL }}"
+MEILISEARCH_INDEX_PREFIX = "{{ MEILISEARCH_INDEX_PREFIX }}"
+MEILISEARCH_API_KEY = "{{ MEILISEARCH_API_KEY }}"
+MEILISEARCH_MASTER_KEY = "{{ MEILISEARCH_MASTER_KEY }}"
+SEARCH_ENGINE = "search.meilisearch.MeilisearchEngine"
 
 # Common cache config
 CACHES = {
@@ -150,17 +152,13 @@ LOGGING["loggers"]["blockstore.apps.bundles.storage"] = {"handlers": ["console"]
 # These warnings are visible in simple commands and init tasks
 import warnings
 
+# REMOVE-AFTER-V20: check if we can remove these lines after upgrade.
 from django.utils.deprecation import RemovedInDjango50Warning, RemovedInDjango51Warning
+# RemovedInDjango5xWarning: 'xxx' is deprecated. Use 'yyy' in 'zzz' instead.
 warnings.filterwarnings("ignore", category=RemovedInDjango50Warning)
 warnings.filterwarnings("ignore", category=RemovedInDjango51Warning)
-
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="wiki.plugins.links.wiki_plugin")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="boto.plugin")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="botocore.vendored.requests.packages.urllib3._collections")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="pkg_resources")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="fs")
-warnings.filterwarnings("ignore", category=DeprecationWarning, module="fs.opener")
-SILENCED_SYSTEM_CHECKS = ["2_0.W001", "fields.W903"]
+# DeprecationWarning: 'imghdr' is deprecated and slated for removal in Python 3.13
+warnings.filterwarnings("ignore", category=DeprecationWarning, module="pgpy.constants")
 
 # Email
 EMAIL_USE_SSL = {{ SMTP_USE_SSL }}
@@ -171,8 +169,6 @@ ACE_CHANNEL_TRANSACTIONAL_EMAIL = "django_email"
 EMAIL_FILE_PATH = "/tmp/openedx/emails"
 
 # Language/locales
-LOCALE_PATHS.append("/openedx/locale/contrib/locale")
-LOCALE_PATHS.append("/openedx/locale/user/locale")
 LANGUAGE_COOKIE_NAME = "openedx-language-preference"
 
 # Allow the platform to include itself in an iframe
@@ -225,7 +221,8 @@ FEATURES["ENABLE_CORS_HEADERS"] = True
 CORS_ALLOW_CREDENTIALS = True
 CORS_ORIGIN_ALLOW_ALL = False
 CORS_ALLOW_INSECURE = {% if ENABLE_HTTPS %}False{% else %}True{% endif %}
-CORS_ALLOW_HEADERS = corsheaders_default_headers + ('use-jwt-cookie',)
+# Note: CORS_ALLOW_HEADERS is intentionally not defined here, because it should
+# be consistent across deployments, and is therefore set in edx-platform.
 
 # Add your MFE and third-party app domains here
 CORS_ORIGIN_WHITELIST = []
@@ -238,6 +235,15 @@ codejail.jail_code.configure("python", "nonexistingpythonbinary", user=None)
 CODE_JAIL = {
     "python_bin": "nonexistingpythonbinary",
     "user": None,
+}
+
+OPENEDX_LEARNING = {
+    'MEDIA': {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+        "OPTIONS": {
+            "location": "/openedx/media-private/openedx-learning",
+        }
+    }
 }
 
 {{ patch("openedx-common-settings") }}

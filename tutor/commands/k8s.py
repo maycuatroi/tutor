@@ -225,9 +225,9 @@ def launch(context: click.Context, non_interactive: bool) -> None:
             from_release=tutor_env.get_env_release(context.obj.root),
         )
 
-    click.echo(fmt.title("Interactive platform configuration"))
     config = tutor_config.load_minimal(context.obj.root)
     if not non_interactive:
+        click.echo(fmt.title("Interactive platform configuration"))
         interactive_config.ask_questions(config, run_for_prod=True)
     tutor_config.save_config_file(context.obj.root, config)
     config = tutor_config.load_full(context.obj.root)
@@ -296,18 +296,11 @@ def start(context: K8sContext, names: List[str]) -> None:
     names = names or ["all"]
     for name in names:
         if name == "all":
-            # Create volumes
-            kubectl_apply(
-                context.root,
-                "--wait",
-                "--selector",
-                "app.kubernetes.io/component=volume",
-            )
-            # Create everything else except jobs
+            # Create everything except jobs
             kubectl_apply(
                 context.root,
                 "--selector",
-                "app.kubernetes.io/component notin (job,volume,namespace)",
+                "app.kubernetes.io/component notin (job,namespace)",
             )
         else:
             kubectl_apply(
@@ -397,7 +390,7 @@ def do(context: K8sContext) -> None:
         """
         config = tutor_config.load(context.root)
         wait_for_deployment_ready(config, "caddy")
-        for name in ["elasticsearch", "mysql", "mongodb"]:
+        for name in ["meilisearch", "mysql", "mongodb"]:
             if tutor_config.is_service_activated(config, name):
                 wait_for_deployment_ready(config, name)
 

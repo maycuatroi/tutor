@@ -1,7 +1,7 @@
 from unittest.mock import Mock, patch
 
 from tests.helpers import PluginsTestCase, temporary_root
-from tutor import images, plugins, utils
+from tutor import images, plugins
 from tutor.__about__ import __version__
 from tutor.commands.images import ImageNotFoundError
 
@@ -49,7 +49,7 @@ class ImagesTests(PluginsTestCase, TestCommandMixin):
         self.assertIsNone(result.exception)
         self.assertEqual(0, result.exit_code)
         # Note: we should update this tag whenever the mysql image is updated
-        image_pull.assert_called_once_with("docker.io/mysql:8.1.0")
+        image_pull.assert_called_once_with("docker.io/mysql:8.4.0")
 
     def test_images_printtag_image(self) -> None:
         result = self.invoke(["images", "printtag", "openedx"])
